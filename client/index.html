@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Anno</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="anno.css">
+</head>
+<body>
+
+<div id="app"></div>
+<div class="search-panel" id="searchPanel">
+  <div class="search-panel-row">
+    <input class="search-panel-input" id="searchInput" placeholder="Search..." autocomplete="off" spellcheck="false">
+    <button class="search-panel-close" onclick="closeSearch()">Cancel</button>
+  </div>
+  <div class="search-panel-info" id="searchInfo"></div>
+  <div class="search-results" id="searchResults"></div>
+</div>
+<button class="night-toggle" onclick="toggleNight()" title="Toggle night mode" aria-label="Toggle night mode"></button>
+
+<!-- Floating selection toolbar (lives outside #app so it doesn't get re-rendered) -->
+<div class="sel-toolbar" id="selToolbar">
+  <button class="sel-toolbar-btn hl-btn" id="selHighlightBtn" title="Highlight">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 13h12M4.5 10L8 3l3.5 7"/><path d="M5.5 8h5"/></svg>
+  </button>
+  <div class="sel-toolbar-sep"></div>
+  <button class="sel-toolbar-btn" id="selVocabBtn" title="Vocab">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M5 5h6M5 8h4M5 11h5"/></svg>
+  </button>
+  <button class="sel-toolbar-btn" id="selCopyBtn" title="Copy">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1"><rect x="5" y="5" width="8" height="8" rx="1"/><path d="M3 11V3h8"/></svg>
+  </button>
+</div>
+
+<!-- Bookmark ribbon (reader view) -->
+<div class="bookmark-ribbon" id="bookmarkRibbon">
+  <svg viewBox="0 0 24 36" fill="none"><path d="M0 0h24v36l-12-8-12 8z" fill="var(--accent)"/></svg>
+</div>
+
+<!-- Font size panel -->
+<div class="fontsize-panel" id="fontsizePanel">
+  <div class="fontsize-panel-header">
+    <span class="fontsize-panel-label">Font size</span>
+    <span class="fontsize-panel-value" id="fontsizeValue">17px</span>
+  </div>
+  <div class="fontsize-panel-row">
+    <span class="small-a">A</span>
+    <input type="range" class="fontsize-slider" id="fontsizeSlider" min="13" max="24" value="17" step="1">
+    <span class="large-a">A</span>
+  </div>
+  <div class="fontsize-panel-row" style="margin-top:12px;justify-content:flex-end;">
+    <span class="night-label" onclick="toggleNight()">Night mode</span>
+  </div>
+</div>
+
+<!-- Annotation panel backdrop -->
+<div class="annot-panel-backdrop" id="annotPanelBackdrop"></div>
+
+<!-- Annotation panel -->
+<div class="annot-panel" id="annotPanel">
+  <div class="annot-panel-handle"></div>
+  <div id="annotPanelContent"></div>
+</div>
+
+<script src="anno.js"></script>
+</body>
+</html>
