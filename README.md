@@ -6,6 +6,14 @@
 
 上传 PDF / EPUB / TXT，在网页阅读器里翻页阅读。内置夜间模式、字体调节、书签、全文搜索、生词本。
 
+## 试一试
+
+`data.example/` 里有一份示例书籍数据（《简单的激情》节选两页），包含 reader 和 Claude 各自的划线与批注。复制到 data 目录即可体验：
+
+```bash
+cp -r data.example data
+```
+
 ## 安装
 
 ```bash
