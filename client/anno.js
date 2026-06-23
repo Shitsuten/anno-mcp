@@ -1,4 +1,4 @@
-const API = '/api';
+const API = '/marginalia/api';
 const PAGES_SIZE = 30;
 
 const SVG = {
@@ -25,7 +25,7 @@ let state = {
   paragraphs: [],
   annotations: [],
   bookmark: null,
-  nightMode: localStorage.getItem('anno-night') === '1',
+  nightMode: localStorage.getItem('marginalia-night') === '1',
   loading: false,
   vocab: [],
   toc: [],
@@ -400,41 +400,92 @@ function renderAnnotPanel() {
   const hlText = state.panelHighlightText;
 
   const paraAnnots = state.annotations.filter(a => a.paragraph_id === paraId);
+  const highlights = paraAnnots.filter(a => a.type === 'highlight');
+  const notes = paraAnnots.filter(a => a.type === 'note');
+
+  // Group notes by highlight_id
+  const highlightIds = new Set(highlights.map(h => h.id));
+  const linkedNotes = {};  // highlight_id -> [notes]
+  const standaloneNotes = [];
+  for (const n of notes) {
+    if (n.highlight_id && highlightIds.has(n.highlight_id)) {
+      if (!linkedNotes[n.highlight_id]) linkedNotes[n.highlight_id] = [];
+      linkedNotes[n.highlight_id].push(n);
+    } else {
+      standaloneNotes.push(n);
+    }
+  }
 
   let itemsHtml = '';
-  for (const a of paraAnnots) {
+
+  // Render each highlight as a card with linked notes
+  for (const hl of highlights) {
+    const isClaude = hl.author === 'Claude';
+    const colorClass = isClaude ? 'amber' : 'jade';
+    const authorName = isClaude ? 'Claude' : 'Butter';
+    const dateStr = hl.created_at ? hl.created_at.substring(0, 10) : '';
+    const canDelete = !isClaude;
+    const delBtn = canDelete
+      ? '<button class="annot-panel-item-del" data-id="' + esc(hl.id) + '" data-type="highlight" title="delete highlight + notes">×</button>'
+      : '';
+
+    let linkedHtml = '';
+    const childNotes = linkedNotes[hl.id] || [];
+    for (const n of childNotes) {
+      const nIsClaude = n.author === 'Claude';
+      const nColor = nIsClaude ? 'amber' : 'jade';
+      const nAuthor = nIsClaude ? 'Claude' : 'Butter';
+      const nDate = n.created_at ? n.created_at.substring(0, 10) : '';
+      const nDel = !nIsClaude
+        ? '<button class="annot-panel-item-del" data-id="' + esc(n.id) + '" data-type="note" title="delete" style="position:static;margin-left:auto;flex-shrink:0">×</button>'
+        : '';
+      linkedHtml += `
+        <div style="display:flex;align-items:flex-start;gap:6px;padding:6px 0;border-top:0.5px solid var(--border-soft);">
+          <div class="annot-panel-bar ${nColor}" style="min-height:14px"></div>
+          <div style="flex:1;min-width:0">
+            <div class="annot-panel-item-author ${nColor}">${nAuthor}</div>
+            <div class="annot-panel-item-text">${esc(cleanNoteText(n.text, hl.text))}</div>
+            ${nDate ? '<div class="annot-panel-item-date">' + nDate + '</div>' : ''}
+          </div>
+          ${nDel}
+        </div>`;
+    }
+
+    itemsHtml += `
+    <div class="annot-panel-item hl-${colorClass}" style="flex-direction:column;align-items:stretch;gap:0;position:relative">
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        <div class="annot-panel-bar ${colorClass}"></div>
+        <div class="annot-panel-item-body">
+          <div class="annot-panel-item-author ${colorClass}">${authorName}</div>
+          <div class="annot-panel-item-hl">${esc(hl.text)}</div>
+          ${dateStr ? '<div class="annot-panel-item-date">' + dateStr + '</div>' : ''}
+        </div>
+        ${delBtn}
+      </div>
+      ${linkedHtml ? '<div style="padding-left:10px">' + linkedHtml + '</div>' : ''}
+    </div>`;
+  }
+
+  // Render standalone notes
+  for (const a of standaloneNotes) {
     const isClaude = a.author === 'Claude';
     const colorClass = isClaude ? 'amber' : 'jade';
-    const authorName = isClaude ? 'Claude' : 'Reader';
+    const authorName = isClaude ? 'Claude' : 'Butter';
     const dateStr = a.created_at ? a.created_at.substring(0, 10) : '';
     const canDelete = !isClaude;
     const delBtn = canDelete
-      ? '<button class="annot-panel-item-del" data-id="' + esc(a.id) + '" data-type="' + esc(a.type) + '" title="delete">×</button>'
+      ? '<button class="annot-panel-item-del" data-id="' + esc(a.id) + '" data-type="note" title="delete">×</button>'
       : '';
-
-    if (a.type === 'highlight') {
-      itemsHtml += `
-      <div class="annot-panel-item hl-${colorClass}">
-        <div class="annot-panel-bar ${colorClass}"></div>
-        <div class="annot-panel-item-body">
-          <div class="annot-panel-item-author ${colorClass}">${authorName}</div>
-          <div class="annot-panel-item-hl">${esc(a.text)}</div>
-          ${dateStr ? `<div class="annot-panel-item-date">${dateStr}</div>` : ''}
-        </div>
-        ${delBtn}
-      </div>`;
-    } else {
-      itemsHtml += `
-      <div class="annot-panel-item">
-        <div class="annot-panel-bar ${colorClass}"></div>
-        <div class="annot-panel-item-body">
-          <div class="annot-panel-item-author ${colorClass}">${authorName}</div>
-          <div class="annot-panel-item-text">${esc(a.text)}</div>
-          ${dateStr ? `<div class="annot-panel-item-date">${dateStr}</div>` : ''}
-        </div>
-        ${delBtn}
-      </div>`;
-    }
+    itemsHtml += `
+    <div class="annot-panel-item">
+      <div class="annot-panel-bar ${colorClass}"></div>
+      <div class="annot-panel-item-body">
+        <div class="annot-panel-item-author ${colorClass}">${authorName}</div>
+        <div class="annot-panel-item-text">${esc(a.text)}</div>
+        ${dateStr ? '<div class="annot-panel-item-date">' + dateStr + '</div>' : ''}
+      </div>
+      ${delBtn}
+    </div>`;
   }
 
   if (paraAnnots.length === 0) {
@@ -446,7 +497,7 @@ function renderAnnotPanel() {
       <span class="annot-panel-title">¶${paraId}</span>
       <button class="annot-panel-close" onclick="closeAnnotPanel()">${SVG.x}</button>
     </div>
-    ${hlText ? `<div class="annot-panel-quote">${esc(hlText)}</div>` : ''}
+    ${hlText ? '<div class="annot-panel-quote">' + esc(hlText) + '</div>' : ''}
     <div class="annot-panel-list">${itemsHtml}</div>
     <div class="annot-panel-input-row">
       <input class="annot-panel-input" id="panelNoteInput" placeholder="add a note..." onkeydown="if(event.key==='Enter')submitPanelNote()">
@@ -463,8 +514,16 @@ async function submitPanelNote() {
 }
 
 async function confirmDeleteAnnot(id, type) {
-  const label = type === 'highlight' ? 'Remove this highlight?' : 'Delete this note?';
+  const annot = state.annotations.find(a => a.id === id);
+  const isBundle = (type === 'highlight') || (type === 'note' && annot && annot.highlight_id);
+  const label = isBundle ? 'Remove this annotation?' : 'Delete this note?';
   if (!confirm(label)) return;
+  if (type === 'highlight') {
+    state.annotations = state.annotations.filter(a => a.highlight_id !== id);
+  } else if (type === 'note' && annot && annot.highlight_id) {
+    const hlId = annot.highlight_id;
+    state.annotations = state.annotations.filter(a => a.id !== hlId && !(a.highlight_id === hlId && a.id !== id));
+  }
   await deleteAnnotation(id);
   const remaining = state.annotations.filter(a => a.paragraph_id === state.panelParaId);
   if (remaining.length === 0) {
@@ -640,7 +699,7 @@ function getParaIdFromSelection(sel) {
 // ===== NIGHT MODE =====
 function toggleNight() {
   state.nightMode = !state.nightMode;
-  localStorage.setItem('anno-night', state.nightMode ? '1' : '0');
+  localStorage.setItem('marginalia-night', state.nightMode ? '1' : '0');
   render();
 }
 
@@ -746,7 +805,7 @@ function renderShelf() {
           <button class="nav-btn" onclick="document.getElementById('fileInput').click()">${SVG.plus} Upload</button>
         </div>
       </div>
-      <div class="page-title">Anno</div>
+      <div class="page-title">Marginalia</div>
       <div class="page-subtitle"><span class="dash">—— </span>the reading room · ${state.books.length} books</div>
       <div class="header-rule"></div>
     </div>
@@ -832,7 +891,7 @@ function renderDetail() {
       </div>
       <div class="progress-row">
         <div class="progress-row-header">
-          <span class="progress-label">Reader</span>
+          <span class="progress-label">Butter</span>
           <span class="progress-pct jade">p.${currentPage} · ${myPct}%</span>
         </div>
         <div class="bar-gauge"><div class="bar-gauge-fill jade" style="width:${myPct}%"></div></div>
@@ -868,7 +927,7 @@ function renderDetail() {
               <span class="annot-group-chevron ${isOpen ? 'open' : ''}">${SVG.chevronDown}</span>
             </span>
           </button>
-          ${isOpen ? `<div class="annot-group-body">${items.map(a => renderDetailAnnot(a)).join('')}</div>` : ''}
+          ${isOpen ? `<div class="annot-group-body">${renderDetailGrouped(items)}</div>` : ''}
         </div>`;
       }).join('')}
     </div>
@@ -877,7 +936,44 @@ function renderDetail() {
   </div>`;
 }
 
-function renderDetailAnnot(a) {
+function cleanNoteText(noteText, hlText) {
+  if (!noteText) return '';
+  let t = noteText;
+  const m = t.match(/^「[^」]*」\s*/);
+  if (m) t = t.substring(m[0].length);
+  if (hlText && t.startsWith(hlText)) t = t.substring(hlText.length).trimStart();
+  return t;
+}
+
+function renderDetailGrouped(items) {
+  const highlights = items.filter(a => a.type === 'highlight');
+  const highlightIds = new Set(highlights.map(a => a.id));
+  const notes = items.filter(a => a.type === 'note');
+  const linkedNotes = {};
+  const standalone = [];
+  for (const n of notes) {
+    if (n.highlight_id && highlightIds.has(n.highlight_id)) {
+      if (!linkedNotes[n.highlight_id]) linkedNotes[n.highlight_id] = [];
+      linkedNotes[n.highlight_id].push(n);
+    } else {
+      standalone.push(n);
+    }
+  }
+  let html = '';
+  for (const hl of highlights) {
+    html += renderDetailAnnot(hl);
+    const children = linkedNotes[hl.id] || [];
+    for (const note of children) {
+      html += renderDetailAnnot(note, true, hl.text);
+    }
+  }
+  for (const note of standalone) {
+    html += renderDetailAnnot(note);
+  }
+  return html;
+}
+
+function renderDetailAnnot(a, isLinked, parentHlText) {
   const isClaude = a.author === 'Claude';
   const authorClass = isClaude ? 'claude' : 'butter';
   const dateStr = a.created_at ? a.created_at.substring(0, 10) : '';
@@ -888,15 +984,18 @@ function renderDetailAnnot(a) {
   } else if (a.type === 'highlight') {
     bodyHtml = `<div style="font-family:var(--font-mono);font-size:9px;color:var(--ink4);font-weight:300">highlight</div>`;
   } else if (a.text) {
-    bodyHtml = `<div class="annot-row-note">${esc(a.text)}</div>`;
+    const displayText = isLinked && parentHlText ? cleanNoteText(a.text, parentHlText) : a.text;
+    bodyHtml = `<div class="annot-row-note">${esc(displayText)}</div>`;
   }
 
+  const indent = isLinked ? ' style="padding-left:16px;border-left:2px solid var(--border);margin-left:4px"' : '';
+
   return `
-  <div class="annot-row">
-    <div class="annot-row-header">
+  <div class="annot-row"${indent}>
+    ${!isLinked ? `<div class="annot-row-header">
       <span class="annot-row-author ${authorClass}">${esc(a.author)}</span>
       ${dateStr ? `<span class="annot-row-date">${dateStr}</span>` : ''}
-    </div>
+    </div>` : ''}
     ${bodyHtml}
   </div>`;
 }
@@ -1078,24 +1177,52 @@ function renderAnnotationsOverview() {
     </div>
     ${sortedPids.length === 0
       ? `<div class="empty-state"><div class="empty-glyph">§</div><div class="empty-text">no annotations</div></div>`
-      : sortedPids.map(pid => `
-        <div class="overview-item">
-          <div class="overview-para">¶${pid}</div>
-          ${grouped[pid].map(a => {
-            const isClaude = a.author === 'Claude';
-            const cls = isClaude ? 'claude' : 'user';
-            const colorCls = isClaude ? 'amber' : 'jade';
-            const authorName = isClaude ? 'Claude' : 'Reader';
-            const text = a.type === 'highlight'
-              ? (a.text ? `<span class="annot-row-highlight ${isClaude ? 'hl-claude' : ''}">${esc(a.text)}</span>` : '<em>highlight</em>')
-              : esc(a.text);
-            return `
-            <div class="overview-annot ${cls}">
-              <div class="overview-annot-author" style="color:var(--${colorCls === 'amber' ? 'accent' : 'jade'})">${authorName} · ${a.type}</div>
-              <div class="overview-annot-text">${text}</div>
+      : sortedPids.map(pid => {
+        const items = grouped[pid];
+        const highlights = items.filter(a => a.type === 'highlight');
+        const highlightIds = new Set(highlights.map(a => a.id));
+        const notes = items.filter(a => a.type === 'note');
+        const linkedMap = {};
+        const standaloneNotes = [];
+        for (const n of notes) {
+          if (n.highlight_id && highlightIds.has(n.highlight_id)) {
+            if (!linkedMap[n.highlight_id]) linkedMap[n.highlight_id] = [];
+            linkedMap[n.highlight_id].push(n);
+          } else {
+            standaloneNotes.push(n);
+          }
+        }
+        let inner = '';
+        for (const hl of highlights) {
+          const isClaude = hl.author === 'Claude';
+          const colorVar = isClaude ? 'accent' : 'jade';
+          const authorName = isClaude ? 'Claude' : 'Butter';
+          inner += `<div class="overview-annot ${isClaude ? 'claude' : 'user'}">
+            <div class="overview-annot-author" style="color:var(--${colorVar})">${authorName}</div>
+            <div class="overview-annot-text"><span class="annot-row-highlight ${isClaude ? 'hl-claude' : ''}">${esc(hl.text || '')}</span></div>
+          </div>`;
+          const children = linkedMap[hl.id] || [];
+          for (const n of children) {
+            const nClaude = n.author === 'Claude';
+            const nColor = nClaude ? 'accent' : 'jade';
+            const nAuthor = nClaude ? 'Claude' : 'Butter';
+            const cleaned = cleanNoteText(n.text || '', hl.text || '');
+            inner += `<div class="overview-annot ${nClaude ? 'claude' : 'user'}" style="padding-left:16px;border-left:2px solid var(--border);margin-left:4px">
+              <div class="overview-annot-text">${esc(cleaned)}</div>
             </div>`;
-          }).join('')}
-        </div>`).join('')
+          }
+        }
+        for (const n of standaloneNotes) {
+          const nClaude = n.author === 'Claude';
+          const nColor = nClaude ? 'accent' : 'jade';
+          const nAuthor = nClaude ? 'Claude' : 'Butter';
+          inner += `<div class="overview-annot ${nClaude ? 'claude' : 'user'}">
+            <div class="overview-annot-author" style="color:var(--${nColor})">${nAuthor}</div>
+            <div class="overview-annot-text">${esc(n.text || '')}</div>
+          </div>`;
+        }
+        return `<div class="overview-item"><div class="overview-para">¶${pid}</div>${inner}</div>`;
+      }).join('')
     }
   </div>`;
 }
@@ -1316,7 +1443,7 @@ function initFontsize() {
   if (!slider) return;
 
   // Load saved font size
-  const saved = localStorage.getItem('anno-fontsize');
+  const saved = localStorage.getItem('marginalia-fontsize');
   if (saved) {
     slider.value = saved;
     document.documentElement.style.setProperty('--reader-font-size', saved + 'px');
@@ -1327,7 +1454,7 @@ function initFontsize() {
     const val = e.target.value;
     document.documentElement.style.setProperty('--reader-font-size', val + 'px');
     if (valueEl) valueEl.textContent = val + 'px';
-    localStorage.setItem('anno-fontsize', val);
+    localStorage.setItem('marginalia-fontsize', val);
   });
 
   // Close font panel when clicking outside
@@ -1355,7 +1482,7 @@ function init() {
     document.querySelector('.night-toggle').textContent = '☾';
   }
   // Load saved font size on init
-  const savedFs = localStorage.getItem('anno-fontsize');
+  const savedFs = localStorage.getItem('marginalia-fontsize');
   if (savedFs) {
     document.documentElement.style.setProperty('--reader-font-size', savedFs + 'px');
   }

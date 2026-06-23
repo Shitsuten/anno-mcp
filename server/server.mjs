@@ -7,23 +7,19 @@ import multer from "multer";
 import { randomUUID, createHash } from "crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync } from "fs";
 import { execFileSync } from "child_process";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { z } from "zod";
 import iconv from "iconv-lite";
 
 process.on("uncaughtException", (err) => { console.error("UNCAUGHT:", err.stack || err.message); });
 process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err.stack || err.message); });
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const PORT = parseInt(process.env.PORT || "3300", 10);
+const PORT = 3300;
 const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN || "";
-const DATA_DIR = process.env.DATA_DIR || join(__dirname, "data");
-const UPLOAD_DIR = process.env.UPLOAD_DIR || join(__dirname, "uploads");
-const EXTRACT_SCRIPT = join(__dirname, "extract_pdf.py");
-const EXTRACT_EPUB = join(__dirname, "extract_epub.py");
+const DATA_DIR = "/opt/marginalia/data";
+const UPLOAD_DIR = "/opt/marginalia/uploads";
+const EXTRACT_SCRIPT = "/opt/marginalia/extract_pdf.py";
+const EXTRACT_EPUB = "/opt/marginalia/extract_epub.py";
 const TARGET_CHARS = 800;
 
 [DATA_DIR, UPLOAD_DIR].forEach(d => { if (!existsSync(d)) mkdirSync(d, { recursive: true }); });
@@ -135,7 +131,7 @@ function getPage(book, pageNum) {
 function createMcp() {
   const server = new McpServer({ name: "book", version: "1.0.0" });
 
-  server.tool("list_books", "List all books on the shelf / 书架列表", {}, async () => {
+  server.tool("list_books", "书架列表", {}, async () => {
     const books = listBooks();
     if (books.length === 0) return { content: [{ type: "text", text: "书架空空如也。" }] };
     const text = books.map(b =>
@@ -144,7 +140,7 @@ function createMcp() {
     return { content: [{ type: "text", text }] };
   });
 
-  server.tool("read_pages", "Read book content by page number / 分页读取书籍内容", {
+  server.tool("read_pages", "分页读取书籍内容", {
     book_id: z.string().describe("书籍ID"),
     page: z.number().optional().describe("页码,默认1"),
   }, async ({ book_id, page }) => {
@@ -159,9 +155,9 @@ function createMcp() {
     return { content: [{ type: "text", text }] };
   });
 
-  server.tool("read_annotations", "Read annotations and highlights / 读取批注和划线", {
+  server.tool("read_annotations", "读取批注", {
     book_id: z.string().describe("书籍ID"),
-    author: z.string().optional().describe("筛选作者名"),
+    author: z.string().optional().describe("筛选作者: 乖乖 或 Claude"),
     context_size: z.number().optional().describe("上下文段落数，默认3"),
   }, async ({ book_id, author, context_size }) => {
     const book = loadBook(book_id);
@@ -185,12 +181,13 @@ function createMcp() {
     return { content: [{ type: "text", text }] };
   });
 
-  server.tool("write_comment", "Write a note or comment on a paragraph / 写评论批注", {
+  server.tool("write_comment", "Claude写评论", {
     book_id: z.string().describe("书籍ID"),
     paragraph_id: z.number().describe("段落编号"),
     content: z.string().describe("评论内容"),
     reply_to: z.string().optional().describe("回复的批注ID"),
-  }, async ({ book_id, paragraph_id, content, reply_to }) => {
+    highlight_id: z.string().optional().describe("关联的高亮批注ID"),
+  }, async ({ book_id, paragraph_id, content, reply_to, highlight_id }) => {
     return withFileLock(bookPath(book_id), async () => {
       const book = loadBook(book_id);
       if (!book) return { content: [{ type: "text", text: "找不到这本书。" }] };
@@ -204,6 +201,7 @@ function createMcp() {
         text: content,
         author: "Claude",
         reply_to: reply_to || null,
+        highlight_id: highlight_id || null,
         created_at: new Date().toISOString(),
       };
       book.annotations.push(annot);
@@ -212,7 +210,7 @@ function createMcp() {
     });
   });
 
-  server.tool("highlight_text", "Highlight text in a paragraph / 划线高亮", {
+  server.tool("highlight_text", "Claude画荧光笔高亮", {
     book_id: z.string().describe("书籍ID"),
     paragraph_id: z.number().describe("段落编号"),
     text: z.string().describe("要高亮的原文片段（必须是段落中的原文）"),
@@ -240,7 +238,7 @@ function createMcp() {
   });
 
 
-  server.tool("set_toc", "Set or update table of contents / 设置目录", {
+  server.tool("set_toc", "设置或更新书籍目录", {
     book_id: z.string().describe("书籍ID"),
     toc: z.array(z.object({
       title: z.string().describe("章节标题"),
@@ -255,7 +253,7 @@ function createMcp() {
     return { content: [{ type: "text", text: "目录已更新，共" + toc.length + "个条目。" }] };
   });
 
-  server.tool("get_progress", "Get reading progress / 读取阅读进度", {
+  server.tool("get_progress", "读取阅读进度", {
     book_id: z.string().describe("书籍ID"),
   }, async ({ book_id }) => {
     const book = loadBook(book_id);
@@ -267,7 +265,7 @@ function createMcp() {
     return { content: [{ type: "text", text: `《${book.title}》阅读进度：第${p.page}/${totalPages}页 (${pct}%)` }] };
   });
 
-  server.tool("delete_book", "Delete a book / 删除书籍", {
+  server.tool("delete_book", "删除书籍", {
     book_id: z.string().describe("书籍ID"),
   }, async ({ book_id }) => {
     const p = bookPath(book_id);
@@ -282,7 +280,7 @@ function createMcp() {
 
 // --- Express ---
 const app = express();
-const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 150 * 1024 * 1024 } });
+const upload = multer({ dest: "/opt/marginalia/uploads", limits: { fileSize: 150 * 1024 * 1024 } });
 app.use((req, res, next) => { console.log(`[DEBUG] ${req.method} ${req.path}`); next(); });
 
 function makeBook(id, title, filename, paragraphs) {
@@ -452,7 +450,7 @@ app.post("/api/books/:id/annotations", async (req, res) => {
     const result = await withFileLock(bookPath(req.params.id), async () => {
       const book = loadBook(req.params.id);
       if (!book) return { status: 404, body: { error: "Not found" } };
-      const { paragraph_id, type, text } = req.body;
+      const { paragraph_id, type, text, highlight_id } = req.body;
       if (!paragraph_id) return { status: 400, body: { error: "Missing paragraph_id" } };
       if (!book.annotations) book.annotations = [];
       const annot = {
@@ -460,8 +458,9 @@ app.post("/api/books/:id/annotations", async (req, res) => {
         paragraph_id,
         type: type || "highlight",
         text: text || "",
-        author: req.body.author || "reader",
+        author: req.body.author || "乖乖",
         reply_to: null,
+        highlight_id: highlight_id || null,
         created_at: new Date().toISOString(),
       };
       book.annotations.push(annot);
@@ -521,9 +520,25 @@ app.delete("/api/books/:id/annotations/:annotId", async (req, res) => {
       if (!book) return { status: 404, body: { error: "Not found" } };
       const idx = (book.annotations || []).findIndex(a => a.id === req.params.annotId);
       if (idx < 0) return { status: 404, body: { error: "Annotation not found" } };
-      book.annotations.splice(idx, 1);
+      const annot = book.annotations[idx];
+      const deleted = [annot.id];
+      if (annot.type === "highlight") {
+        book.annotations = book.annotations.filter(a => {
+          if (a.highlight_id === annot.id) { deleted.push(a.id); return false; }
+          return true;
+        });
+      } else if (annot.type === "note" && annot.highlight_id) {
+        const hlId = annot.highlight_id;
+        book.annotations = book.annotations.filter(a => {
+          if (a.id === hlId) { deleted.push(a.id); return false; }
+          if (a.id !== annot.id && a.highlight_id === hlId) { deleted.push(a.id); return false; }
+          return true;
+        });
+      }
+      const newIdx = book.annotations.findIndex(a => a.id === req.params.annotId);
+      if (newIdx >= 0) book.annotations.splice(newIdx, 1);
       saveBook(book);
-      return { status: 200, body: { ok: true } };
+      return { status: 200, body: { ok: true, deleted } };
     });
     res.status(result.status).json(result.body);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -642,8 +657,8 @@ function externalBaseUrl(req) {
 function mcpResourceMetadata(req) {
   const baseUrl = externalBaseUrl(req);
   return {
-    resource: `${baseUrl}/mcp`,
-    resource_name: "Anno",
+    resource: `${baseUrl}/marginalia/mcp`,
+    resource_name: "Marginalia",
     bearer_methods_supported: ["header"],
     scopes_supported: [],
     authorization_servers: [externalBaseUrl(req)],
@@ -764,7 +779,7 @@ app.get("/mcp/sse", async (req, res) => {
     return;
   }
   const mcpServer = createMcp();
-  const transport = new SSEServerTransport("/mcp/messages", res);
+  const transport = new SSEServerTransport("/marginalia/mcp/messages", res);
   transports[transport.sessionId] = { transport, mcpServer };
   res.on("close", () => { mcpServer.close(); delete transports[transport.sessionId]; });
   await mcpServer.connect(transport);
@@ -777,6 +792,26 @@ app.post("/mcp/messages", async (req, res) => {
   await session.transport.handlePostMessage(req, res, req.body);
 });
 
-app.get("/health", (req, res) => res.json({ status: "ok", service: "anno" }));
+app.get("/health", (req, res) => res.json({ status: "ok", service: "marginalia" }));
 
-app.listen(PORT, '127.0.0.1', () => console.log(`Anno MCP server on 127.0.0.1:${PORT}`));
+app.listen(PORT, '127.0.0.1', () => console.log(`Marginalia on 127.0.0.1:${PORT}`));
+
+// --- Visitor Counter ---
+const COUNTER_FILE = "/opt/marginalia/data/visitor_count.json";
+function getVisitorCount() {
+  try { return JSON.parse(readFileSync(COUNTER_FILE, "utf-8")).count || 0; } catch { return 42; }
+}
+function incVisitorCount() {
+  const c = getVisitorCount() + 1;
+  const tmp = COUNTER_FILE + '.tmp';
+  writeFileSync(tmp, JSON.stringify({ count: c }), "utf-8");
+  renameSync(tmp, COUNTER_FILE);
+  return c;
+}
+app.get("/api/visitor-count", (req, res) => {
+  res.json({ count: getVisitorCount() });
+});
+app.post("/api/visitor-count", (req, res) => {
+  const count = incVisitorCount();
+  res.json({ count });
+});
