@@ -219,6 +219,7 @@ async function addVocab(word, paraId) {
 }
 
 async function deleteVocab(vid) {
+  if (!confirm('Delete this vocab entry?')) return;
   await api(`/books/${state.currentBook.id}/vocab/${vid}`, { method: 'DELETE' });
   state.vocab = state.vocab.filter(v => v.id !== vid);
   render();
@@ -1106,7 +1107,8 @@ function renderDetailReply(note, allNotes, hlText, depth) {
 
 function renderDetailAnnot(a, isLinked, parentHlText) {
   const isClaude = a.author === 'Claude';
-  const authorClass = isClaude ? 'claude' : 'butter';
+  const colorVar = isClaude ? 'accent' : 'jade';
+  const authorName = isClaude ? 'Claude' : 'Butter';
   const dateStr = a.created_at ? a.created_at.substring(0, 10) : '';
 
   let bodyHtml = '';
@@ -1119,15 +1121,16 @@ function renderDetailAnnot(a, isLinked, parentHlText) {
     bodyHtml = `<div class="annot-row-note">${esc(displayText)}</div>`;
   }
 
-  const indent = isLinked ? ' style="padding-left:16px;border-left:2px solid var(--border);margin-left:4px"' : '';
-
   return `
-  <div class="annot-row"${indent}>
-    ${!isLinked ? `<div class="annot-row-header">
-      <span class="annot-row-author ${authorClass}">${esc(a.author)}</span>
-      ${dateStr ? `<span class="annot-row-date">${dateStr}</span>` : ''}
-    </div>` : ''}
-    ${bodyHtml}
+  <div class="annot-row" style="display:flex;align-items:stretch;gap:8px">
+    <div style="width:3px;border-radius:2px;background:var(--${colorVar});opacity:0.6;flex-shrink:0"></div>
+    <div style="flex:1;min-width:0">
+      <div class="annot-row-header">
+        <span class="annot-row-author ${isClaude?'claude':'butter'}">${authorName}</span>
+        ${dateStr ? `<span class="annot-row-date">${dateStr}</span>` : ''}
+      </div>
+      ${bodyHtml}
+    </div>
   </div>`;
 }
 

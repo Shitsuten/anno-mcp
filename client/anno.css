@@ -1134,9 +1134,15 @@ mark.hl-both:hover {
 
 .vocab-underline {
   text-decoration: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: var(--ink4);
+  text-decoration-style: solid;
+  text-decoration-color: rgba(139, 44, 31, 0.85);
+  text-decoration-thickness: 2px;
   text-underline-offset: 2px;
+}
+
+.night-mode .vocab-underline {
+  text-decoration-color: rgba(176, 74, 58, 0.85);
+  text-decoration-thickness: 2px;
 }
 
 /* ===== EMPTY STATE ===== */
